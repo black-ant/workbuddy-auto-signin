@@ -1,0 +1,13 @@
+[Unit]
+Description=WorkBuddy 每日签到 + 成长中心全量（每天 00:05）
+
+[Timer]
+OnCalendar=*-*-* 00:05:00
+# 关机错过的触发在开机后补跑
+Persistent=true
+# 加一点随机抖动，避免整点同时打接口
+RandomizedDelaySec=60
+Unit=workbuddy-signin.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=WorkBuddy 成长中心轮询（补签与补领）
+Documentation=https://github.com/88lin/workbuddy-auto-signin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/antblack/code/workbuddy-auto-signin
+# silent-poll：未签才签 + 成长中心，已领过时空跑且不写日志
+ExecStart=/home/antblack/code/workbuddy-auto-signin/local/run.sh silent-poll
+TimeoutStartSec=300
+Nice=10
+Environment=HOME=/home/antblack

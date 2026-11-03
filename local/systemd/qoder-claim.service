@@ -1,0 +1,13 @@
+[Unit]
+Description=Qoder 每日 100 Credits 领取
+Documentation=https://github.com/88lin/workbuddy-auto-signin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/antblack/code/workbuddy-auto-signin
+ExecStart=/home/antblack/code/workbuddy-auto-signin/local/run-qoder.sh auto
+TimeoutStartSec=300
+Nice=10
+Environment=HOME=/home/antblack

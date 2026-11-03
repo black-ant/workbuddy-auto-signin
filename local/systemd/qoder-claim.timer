@@ -1,0 +1,11 @@
+[Unit]
+Description=Qoder 每日 100 Credits 领取（10/11/15/19/23 点 05 分）
+
+[Timer]
+OnCalendar=*-*-* 10,11,15,19,23:05:00
+Persistent=true
+RandomizedDelaySec=120
+Unit=qoder-claim.service
+
+[Install]
+WantedBy=timers.target

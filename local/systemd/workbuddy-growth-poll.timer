@@ -1,0 +1,11 @@
+[Unit]
+Description=WorkBuddy 成长中心轮询（每 4 小时：01/05/09/13/17/21 点）
+
+[Timer]
+OnCalendar=*-*-* 01,05,09,13,17,21:00:00
+Persistent=true
+RandomizedDelaySec=120
+Unit=workbuddy-growth-poll.service
+
+[Install]
+WantedBy=timers.target

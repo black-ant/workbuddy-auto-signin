@@ -1,0 +1,15 @@
+[Unit]
+Description=WorkBuddy 每日签到 + 成长中心全量
+Documentation=https://github.com/88lin/workbuddy-auto-signin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/antblack/code/workbuddy-auto-signin
+ExecStart=/home/antblack/code/workbuddy-auto-signin/local/run.sh auto
+# 失败可由 timer 下次触发重跑；单次预算略小于 10 分钟上限，确保收尾能落日志
+TimeoutStartSec=600
+Nice=10
+# 凭据解密需要 HOME 与 XDG 目录，systemd user 实例已提供
+Environment=HOME=/home/antblack
