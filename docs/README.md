@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | [../README.md](../README.md) | 上游项目介绍、Windows / macOS 一键安装 | 上游用户 |
 | [../AGENTS.md](../AGENTS.md) | 仓库结构、硬性约束、代码约定、AI 协作规则 | **AI 编码助手 / 贡献者** |
+| [quickstart-linux.md](quickstart-linux.md) | 四步跑起来（可直接转发） | 急着部署的人 |
 | [linux-deploy.md](linux-deploy.md) | Linux 完整部署：依赖、`env.sh`、systemd、验收、排错、安全边界 | 部署运维者 |
 | [codearts-signin.md](codearts-signin.md) | 华为 CodeArts Agent 签到协议：端点、签名、凭据、状态映射 | 想改 CodeArts 实现的人 |
 | [../local/DEPLOY-RESULT.md](../local/DEPLOY-RESULT.md) | 一次真实部署的实测记录与踩坑复盘 | 排错时对照 |
@@ -13,7 +14,7 @@
 ## 三条最常见的路径
 
 **我要在一台 Linux 上跑起来**
-→ [linux-deploy.md](linux-deploy.md) 第 1 → 4 → 7 → 8 节。
+→ [quickstart-linux.md](quickstart-linux.md)，或 [linux-deploy.md](linux-deploy.md) 第 1 → 4 → 7 → 8 节。
 
 **我要理解 CodeArts（华为）那条路怎么实现的**
 → [codearts-signin.md](codearts-signin.md)。

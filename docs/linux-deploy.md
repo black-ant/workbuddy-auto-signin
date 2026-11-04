@@ -220,15 +220,18 @@ systemctl --user enable --now codearts-claim.timer
 sudo loginctl enable-linger "$USER"
 ```
 
-| timer | 触发时间 | 执行 | 为什么这么排 |
+| timer | 触发时间（仓库当前 = 方案 B） | 执行 | 为什么这么排 |
 | --- | --- | --- | --- |
-| `workbuddy-signin` | 每天 00:05 | `run.sh auto` | 上游签到跨零点重置 |
+| `workbuddy-signin` | 09:00 + 随机 1h | `run.sh auto` | 白天开机才跑；上游签到跨零点重置 |
 | `workbuddy-growth-poll` | 01/05/09/13/17/21 点 | `run.sh silent-poll` | 补签 + 成长中心；已领时空跑不写日志 |
-| `qoder-claim` | 10/11/15/19/23 点 05 分 | `run-qoder.sh auto` | 活动 10:00 才下发且不总准时，多次幂等补领 |
-| `codearts-claim` | 00/10/15/20 点 20 分 | `run-codearts.sh auto` | 活动按北京时间 00:00 重置，多次幂等补领 |
+| `qoder-claim` | 10:05 + 12:30 / 14:30 / 16:30 | `run-qoder.sh auto` | 活动 10:00 才下发且不总准时，多次幂等补领 |
+| `codearts-claim` | 09:00 + 11:30 / 14:00 / 16:30 | `run-codearts.sh auto` | 活动按北京时间 00:00 重置，多次幂等补领 |
+
+> 想知道为什么改到白天、以及旧版凌晨时刻是什么样，见
+> [9.1 触发时刻](#91-触发时刻仓库里有两套方案选一套并真正装进去)。
 
 - 四个 timer 全部 `Persistent=true`：关机期间错过的触发，开机后补跑。
-- `RandomizedDelaySec` 加了抖动，避免整点同时打接口。
+- 签到类三个用 `RandomizedDelaySec=1h` 让每天时刻不同；成长轮询用 120 秒抖动。
 - 开机自启链路：`linger` → `user@<uid>.service` → `timers.target` → timer。
   **user timer 依赖 linger，不是"开机瞬间"而是"用户实例启动即跑"。**
 
@@ -260,6 +263,35 @@ journalctl --user -u codearts-claim.service -n 20 --no-pager
 | 四个 timer | `enabled` + `active` |
 | 四个 service | `ExecMainExitTimestamp` 有值且 `ExecMainStatus=0` |
 | linger | `Linger=yes` |
+
+### 9.1 触发时刻：仓库里有两套方案，选一套并真正装进去
+
+`local/systemd/*.timer` 目前是**工作时间随机**版；但已部署机器上曾按
+**凌晨固定时刻**版安装过。两者不通用，`cp` 一份就以为生效是最常见的误判。
+
+| 方案 | 适用 | workbuddy-signin | qoder-claim | codearts-claim |
+| --- | --- | --- | --- | --- |
+| **A. 凌晨固定**（旧） | 机器 24 小时开机 | `00:05` | `10,11,15,19,23:05` | `00,10,15,20:20` |
+| **B. 白天随机**（仓库当前） | 白天才开机 / 想错开整点 | `09:00` + 随机 1h | `10:05` + 12:30/14:30/16:30 | `09:00` + 11:30/14:00/16:30 |
+
+方案 B 的特点：`RandomizedDelaySec=1h`，每个触发点在原点之后一小时内随机落地，
+所以每天执行时刻都不同，看起来更像真人；且全部落在 09:00~17:30 之间，
+**依赖机器在白天开机**。
+
+> 部署后务必验证**实际生效**的时刻，而不是看文件内容：
+>
+> ```bash
+> systemctl --user list-timers --all | grep -E 'workbuddy|qoder|codearts'
+> ```
+>
+> 若这里的 `NEXT` 与 `local/systemd/*.timer` 的内容不一致，说明只改了文件、
+> 没执行 `cp` + `daemon-reload`，或改完没重启 timer。
+>
+> ```bash
+> cp local/systemd/*.timer "$HOME/.config/systemd/user/"
+> systemctl --user daemon-reload
+> systemctl --user restart workbuddy-signin.timer qoder-claim.timer codearts-claim.timer
+> ```
 
 ---
 

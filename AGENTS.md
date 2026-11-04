@@ -107,12 +107,19 @@ systemd-analyze verify local/systemd/*.service local/systemd/*.timer
 
 ### systemd 单元约定
 
-- `Type=oneshot`、`Persistent=true`、`RandomizedDelaySec=60~120`
+- `Type=oneshot`、`Persistent=true`
 - `OnCalendar=` 的写法：同一组时点用逗号分隔**小时**，不要在时分秒上逗号
-  - 正确：`OnCalendar=*-*-* 00,10,15,20:20:00`
-  - 错误：`OnCalendar=*-*-* 00:20,10:20,15:20,20:20:00`（verify 会报日历错误）
+  - 正确：`OnCalendar=*-*-* 01,05,09,13,17,21:00:00`
+  - 错误：`OnCalendar=*-*-* 01:00,05:00,09:00,13:00:00`（verify 会报日历错误）
+- 签到类 timer 用 `RandomizedDelaySec=1h`（让每天时刻不同，更像真人）；
+  轮询类用 `120`。改完后**必须** `cp` 到 `~/.config/systemd/user/` 并
+  `systemctl --user daemon-reload && systemctl --user restart <unit>.timer`，
+  只改仓库里的文件不会生效。
 - 必须设 `Environment=HOME=`，否则解不到凭据
 - `TimeoutStartSec` 不小于 300（CodeArts 可能要等 STS 续期）
+
+> 部署后验证生效时刻：`systemctl --user list-timers --all | grep -E 'workbuddy|qoder|codearts'`。
+> 这里的 `NEXT` 与仓库文件不一致，说明没装进去。
 
 ---
 
