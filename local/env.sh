@@ -19,8 +19,8 @@ export QODER_LINUX_AUTH_FILE="$HOME/.config/com.qoder.app.stable/auth.v1.dat"
 # Qoder 设备身份缓存（每日 100 Credits 活动必需）
 export QODER_MACHINE_TOKEN="$HOME/.config/Qoder/SharedClientCache/cache/machine_token.json"
 
-# 显式指定解释器：cryptography 装在独立 venv 里，不要用系统 python。
-export SIGNIN_PYTHON="${SIGNIN_PYTHON:-/home/antblack/.workbuddy/binaries/python/envs/default/bin/python}"
+# 显式指定解释器：cryptography / dbus-next 装在独立 venv 里，不要用系统 python。
+export SIGNIN_PYTHON="${SIGNIN_PYTHON:-$HOME/.venvs/workbuddy-signin/bin/python}"
 
 # 日志目录（systemd 下也写这里，便于人工排查）
 export LOCAL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logs"
