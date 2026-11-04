@@ -121,7 +121,7 @@ def main(argv=None):
         if exe:
             os.environ["WORKBUDDY_EXE"] = exe
         else:
-            log("未探测到 WorkBuddy.exe，交给上游报 RUNTIME_NOT_FOUND")
+            log("默认目录未探测到 WorkBuddy.exe，交给上游继续探测")
 
     if not os.environ.get("WORKBUDDY_AUTH_FILE"):
         auth = default_auth_file()

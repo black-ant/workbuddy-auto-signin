@@ -159,7 +159,7 @@ Write-Step "运行身份：$CurrentUser（交互式，需已登录）"
 
 # 凭据存在性只做提示，不阻断注册——用户可能稍后才登录客户端
 $authHints = @(
-    @{ Path = (Join-Path $env:LOCALAPPDATA "workbuddy-desktop.info"); Name = "WorkBuddy 凭据" },
+    @{ Path = (Join-Path $env:LOCALAPPDATA "CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info"); Name = "WorkBuddy 凭据" },
     @{ Path = (Join-Path $env:APPDATA "com.qoder.app.stable");         Name = "Qoder 登录态目录" },
     @{ Path = (Join-Path $env:APPDATA "codearts-agent\Local State");  Name = "CodeArts 容器密钥" }
 )
