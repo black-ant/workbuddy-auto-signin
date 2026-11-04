@@ -40,6 +40,9 @@ $LocalDir = $PSScriptRoot
 $RepoDir = Split-Path -Parent $LocalDir
 $LogDir = Join-Path $LocalDir "logs"
 
+# 显式钉住根路径：Register 与 Get 的作用域必须一致，否则回读会「找不到任务」
+$TaskPath = "\"
+
 function Write-Step {
     param([string]$Message)
     Write-Host "  $Message"
@@ -82,7 +85,7 @@ function New-DailyTriggerSet {
 
     $triggers = @()
     foreach ($time in $Times) {
-        $trigger = New-ScheduledTaskTrigger -Daily -At $time
+        $trigger = New-ScheduledTaskTrigger -Daily -At $time -ErrorAction Stop
         if ($RandomDelay) {
             # MSFT_TaskDailyTrigger.RandomDelay 是 ISO 8601 duration 字符串
             $trigger.RandomDelay = $RandomDelay
@@ -148,7 +151,7 @@ foreach ($definition in $definitions) {
 }
 
 if (-not (Test-Path -LiteralPath $LogDir)) {
-    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
 }
 
 $CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -178,67 +181,101 @@ $settings = New-ScheduledTaskSettingsSet `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+    -ErrorAction Stop
 
 $principal = New-ScheduledTaskPrincipal -UserId $CurrentUser `
-    -LogonType Interactive -RunLevel Limited
+    -LogonType Interactive -RunLevel Limited -ErrorAction Stop
 
-# AtLogOn 触发器：登录后 2 分钟补跑（替代 Linux 的 linger）
-$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
-$logonTrigger.Delay = "PT2M"
+$registered = @()
+$currentTask = "-"
+$stage = "准备"
 
-foreach ($definition in $definitions) {
-    $scriptPath = Join-Path $LocalDir $definition.Script
-    $argument = '"{0}" {1}' -f $scriptPath, $definition.Arguments
+try {
+    foreach ($definition in $definitions) {
+        $currentTask = $definition.Name
+        $scriptPath = Join-Path $LocalDir $definition.Script
+        $argument = '"{0}" {1}' -f $scriptPath, $definition.Arguments
 
-    $action = New-ScheduledTaskAction -Execute $Pythonw `
-        -Argument $argument -WorkingDirectory $RepoDir
+        $stage = "创建动作"
+        $action = New-ScheduledTaskAction -Execute $Pythonw `
+            -Argument $argument -WorkingDirectory $RepoDir -ErrorAction Stop
 
-    $triggers = @(New-DailyTriggerSet -Times $definition.Times `
-        -RandomDelay $definition.RandomDelay)
-    $triggers += $logonTrigger
+        $stage = "创建触发器"
+        $triggers = @(New-DailyTriggerSet -Times $definition.Times `
+            -RandomDelay $definition.RandomDelay)
 
-    Register-ScheduledTask -TaskName $definition.Name `
-        -Action $action -Trigger $triggers -Settings $settings `
-        -Principal $principal -Description $definition.Description `
-        -Force | Out-Null
+        # AtLogOn 触发器：登录后 2 分钟补跑（替代 Linux 的 linger）。
+        # 每个任务各自新建，不要复用同一个对象——触发器与任务绑定后跨任务共享会失效。
+        $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser `
+            -ErrorAction Stop
+        $logonTrigger.Delay = "PT2M"
+        $triggers += $logonTrigger
 
-    # 回读校验：注册接口返回成功不等于配置生效
-    $task = Get-ScheduledTask -TaskName $definition.Name
-    $info = Get-ScheduledTaskInfo -TaskName $definition.Name
+        $stage = "注册"
+        Register-ScheduledTask -TaskName $definition.Name -TaskPath $TaskPath `
+            -Action $action -Trigger $triggers -Settings $settings `
+            -Principal $principal -Description $definition.Description `
+            -Force -ErrorAction Stop | Out-Null
+        $registered += $definition.Name
 
-    $logonCount = @($task.Triggers |
-        Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskLogonTrigger" }).Count
-    if ($logonCount -lt 1) {
-        throw "$($definition.Name)：登录触发器未写入"
-    }
+        # 回读校验：注册接口返回成功不等于配置生效。同名旧任务尤其容易掩盖失败。
+        $stage = "回读校验"
+        $tasks = @(Get-ScheduledTask -TaskName $definition.Name `
+            -TaskPath $TaskPath -ErrorAction Stop)
+        if ($tasks.Count -ne 1) {
+            throw "未找到唯一的计划任务（找到 $($tasks.Count) 个）"
+        }
+        $task = $tasks[0]
+        $info = Get-ScheduledTaskInfo -TaskName $definition.Name `
+            -TaskPath $TaskPath -ErrorAction Stop
 
-    $dailyCount = @($task.Triggers |
-        Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskDailyTrigger" }).Count
-    if ($dailyCount -ne $definition.Times.Count) {
-        throw ("$($definition.Name)：Daily 触发器数量为 $dailyCount，应为 " +
-               "$($definition.Times.Count)")
-    }
+        $logonCount = @($task.Triggers |
+            Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskLogonTrigger" }).Count
+        if ($logonCount -lt 1) {
+            throw "登录触发器未写入"
+        }
 
-    $next = $null
-    try {
-        $next = [datetime]$info.NextRunTime
-    } catch {
+        $dailyCount = @($task.Triggers |
+            Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskDailyTrigger" }).Count
+        if ($dailyCount -ne $definition.Times.Count) {
+            throw ("Daily 触发器数量为 $dailyCount，应为 $($definition.Times.Count)")
+        }
+
         $next = $null
-    }
-    if (-not $next -or $next.Year -lt 2000) {
-        throw "$($definition.Name)：NextRunTime 无效（$($info.NextRunTime)），任务不会按时触发"
-    }
+        try {
+            $next = [datetime]$info.NextRunTime
+        } catch {
+            $next = $null
+        }
+        if (-not $next -or $next.Year -lt 2000) {
+            throw "NextRunTime 无效（$($info.NextRunTime)），任务不会按时触发"
+        }
 
-    Write-Step ("{0}：{1} 个 Daily + 1 个 LogOn，下次 {2:yyyy-MM-dd HH:mm}" -f `
-        $definition.Name, $dailyCount, $next)
+        Write-Step ("{0}：{1} 个 Daily + 1 个 LogOn，下次 {2:yyyy-MM-dd HH:mm}" -f `
+            $definition.Name, $dailyCount, $next)
+    }
+} catch {
+    # 任何一步失败都终止，绝不打印「完成」——上游 install-windows.ps1 踩过这个坑
+    Write-Host ""
+    Write-Host ("安装未完成：{0} 在「{1}」阶段失败。" -f $currentTask, $stage) `
+        -ForegroundColor Red
+    Write-Host "错误信息：$($_.Exception.Message)" -ForegroundColor Red
+    if ($registered.Count -gt 0) {
+        Write-Host ("已注册：" + ($registered -join "、") +
+            "。这些任务会保留；排除问题后重跑会更新同名任务。") -ForegroundColor Yellow
+    }
+    Write-Host "若提示拒绝访问（0x80070005），请用同一 Windows 账号以管理员身份打开 PowerShell 后重试。" `
+        -ForegroundColor Yellow
+    exit 1
 }
 
 # ---------------------------------------------------------------- 验收提示
 
 Write-Host ""
 Write-Host "== 已注册 =="
-Get-ScheduledTask -TaskName ($definitions | ForEach-Object { $_.Name }) |
+Get-ScheduledTask -TaskName ($definitions | ForEach-Object { $_.Name }) `
+    -TaskPath $TaskPath -ErrorAction Stop |
     Select-Object TaskName, State |
     Format-Table -AutoSize
 

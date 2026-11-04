@@ -41,6 +41,9 @@ try {
 $LocalDir = $PSScriptRoot
 $RepoDir = Split-Path -Parent $LocalDir
 
+# 与 install-tasks.ps1 保持一致：查询必须钉在同一个根路径
+$TaskPath = "\"
+
 $TaskNames = @(
     "WorkBuddyAutoSignin",
     "WorkBuddyGrowthPoll",
@@ -143,14 +146,25 @@ $problems = 0
 foreach ($name in $TaskNames) {
     $task = $null
     try {
-        $task = Get-ScheduledTask -TaskName $name -ErrorAction Stop
+        $task = Get-ScheduledTask -TaskName $name -TaskPath $TaskPath `
+            -ErrorAction Stop
     } catch {
         Write-Host ("{0,-22} {1}" -f $name, "未注册")
         $problems++
         continue
     }
 
-    $info = Get-ScheduledTaskInfo -TaskName $name
+    # 单个任务读取失败不能让整张体检表崩掉，只记一项异常
+    $info = $null
+    try {
+        $info = Get-ScheduledTaskInfo -TaskName $name -TaskPath $TaskPath `
+            -ErrorAction Stop
+    } catch {
+        Write-Host ("{0,-22} {1}" -f $name, "运行信息读取失败")
+        $problems++
+        continue
+    }
+
     $result = Format-TaskResult -Code $info.LastTaskResult `
         -LastRunTime $info.LastRunTime
 
