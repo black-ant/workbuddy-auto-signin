@@ -7,12 +7,12 @@
 git clone https://github.com/black-ant/workbuddy-auto-signin.git
 cd workbuddy-auto-signin
 
-# 2. 装依赖
-python3 -m venv "$HOME/.venvs/signin"
-"$HOME/.venvs/signin/bin/pip" install cryptography dbus-next
+# 2. 装依赖（目录名与 env.sh 的 SIGNIN_PYTHON 默认值保持一致）
+python3 -m venv "$HOME/.venvs/workbuddy-signin"
+"$HOME/.venvs/workbuddy-signin/bin/pip" install cryptography dbus-next
 
 # 3. 把示例路径换成自己的
-sed -i "s#^export SIGNIN_PYTHON=.*#export SIGNIN_PYTHON=\"$HOME/.venvs/signin/bin/python\"#" local/env.sh
+sed -i "s#^export SIGNIN_PYTHON=.*#export SIGNIN_PYTHON=\"$HOME/.venvs/workbuddy-signin/bin/python\"#" local/env.sh
 CLONE_DIR="$(pwd)"
 sed -i "s#^WorkingDirectory=.*#WorkingDirectory=$CLONE_DIR#" local/systemd/*.service
 sed -i "s#^ExecStart=.*/local/#ExecStart=$CLONE_DIR/local/#" local/systemd/*.service

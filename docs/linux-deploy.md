@@ -4,7 +4,7 @@
 **WorkBuddy 签到 + 成长中心**、**Qoder 每日 100 Credits**、
 **CodeArts Agent（码道）每日签到 100 积分**。
 
-- 适用系统：Linux（`systemd --user`）
+- 适用系统：Linux（`systemd --user`）；Windows 见[附录 B](#附录-bwindows-适配层)
 - 目标读者：人类操作者，以及需要在本仓库内工作的 AI 编码助手
 - 上游项目：[88lin/workbuddy-auto-signin](https://github.com/88lin/workbuddy-auto-signin)
 - 本 fork：[black-ant/workbuddy-auto-signin](https://github.com/black-ant/workbuddy-auto-signin)
@@ -66,7 +66,8 @@ git remote add upstream https://github.com/88lin/workbuddy-auto-signin.git
 git fetch upstream && git merge upstream/main
 ```
 
-克隆后应能看到 `local/`（含 8 个脚本 + 4 组 systemd 单元）。
+克隆后应能看到 `local/`（Linux 的 `.sh` / `.py` 入口 + 4 组 systemd 单元，
+以及 Windows 的 `*_run.py`、`install-tasks.ps1`、`status.ps1`）。
 若只有 `signin.py` / `qoder_signin.py`，说明远程 fork 还没同步适配层提交。
 
 ---
@@ -74,9 +75,12 @@ git fetch upstream && git merge upstream/main
 ## 3. 安装运行时依赖
 
 ```bash
-python3 -m venv "$HOME/.venvs/signin"
-"$HOME/.venvs/signin/bin/pip" install cryptography dbus-next
+python3 -m venv "$HOME/.venvs/workbuddy-signin"
+"$HOME/.venvs/workbuddy-signin/bin/pip" install cryptography dbus-next
 ```
+
+> 目录名要与 `local/env.sh` 里 `SIGNIN_PYTHON` 的默认值一致（当前是
+> `.venvs/workbuddy-signin`）。用别的名字就必须同时改 `env.sh`，否则取不到登录态。
 
 | 包 | 用途 |
 | --- | --- |
@@ -106,7 +110,7 @@ export QODER_LINUX_AUTH_FILE="$HOME/.config/com.qoder.app.stable/auth.v1.dat"
 export QODER_MACHINE_TOKEN="$HOME/.config/Qoder/SharedClientCache/cache/machine_token.json"
 
 # 装了依赖的解释器
-export SIGNIN_PYTHON="${SIGNIN_PYTHON:-$HOME/.venvs/signin/bin/python}"
+export SIGNIN_PYTHON="${SIGNIN_PYTHON:-$HOME/.venvs/workbuddy-signin/bin/python}"
 
 export LOCAL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logs"
 mkdir -p "$LOCAL_LOG_DIR"
@@ -154,6 +158,12 @@ CodeArts 的 `state.vscdb` 也一样，填错等于白装。
 | `local/run.sh` | `doctor` `status` `auto` `silent` `silent-poll` `growth` `claim` | WorkBuddy，转调上游 `signin.py` |
 | `local/run-qoder.sh` | `doctor` `status` `auto` `silent` | Qoder，先解 token 再转调 `qoder_runner.py` |
 | `local/run-codearts.sh` | `doctor` `status` `auto` | CodeArts，白名单校验后转调 `codearts_signin.py` |
+| `local/workbuddy_run.py` | 同上（Windows） | WorkBuddy，钉住 exe / 凭据后转调 `signin.py` |
+| `local/qoder_run.py` | `doctor` `status` `auto` `silent` | Qoder，注入登录态目录与国际版端点 |
+| `local/codearts_run.py` | `doctor` `status` `auto` | CodeArts，DPAPI + AES-GCM 解会话并回写 |
+
+Windows 三个入口与 shell 版共享同一套子命令与输出契约，由 `python` / `pythonw`
+直接调用，调度见[附录 B](#附录-bwindows-适配层)。
 
 约定：
 
@@ -352,10 +362,11 @@ CodeArts 的协议细节（签名串构造、请求头、状态映射）见
 
 ---
 
-## 附录：文件清单
+## 附录 A：文件清单
 
 ```
 local/
+# Linux
 ├── env.sh                         集中配置（唯一需要按机器修改的文件）
 ├── run.sh                         WorkBuddy 入口（转调上游 signin.py）
 ├── run-qoder.sh                   Qoder 入口（解 token → qoder_runner.py）
@@ -364,11 +375,49 @@ local/
 ├── qoder_runner.py                导入上游并补 Cosy-* 设备头
 ├── codearts_token.py              CodeArts 会话解密 / 续期 / 写回 IDE 存储
 ├── codearts_signin.py             CodeArts 签到主脚本（SDK AK/SK 签名）
+├── systemd/                       4 组 oneshot + timer
+# Windows
+├── workbuddy_run.py               入口：钉住 exe 与凭据路径
+├── qoder_run.py                   入口：登录态目录 / 国际版端点 / 出口策略
+├── codearts_run.py                入口：DPAPI + AES-GCM 解会话 / 续期 / 回写
+├── net_win.py                     系统代理 CONNECT+TLS 实测，坏代理时仅目标域名直连
+├── qoder_dns_pin.json             Qoder DNS 兜底 IP（ips 为空 = 走系统 DNS）
+├── install-tasks.ps1              注册 4 个计划任务（抖动 + 登录补跑 + 回读校验）
+├── status.ps1                     四任务 + 三平台体检
+# 文档
 ├── DEPLOY-RESULT.md               某次真实部署的实测记录与踩坑复盘
-├── REFERENCE-IMPLEMENTATION.md    同类开源项目源码分析（借鉴取舍）
-└── systemd/
-    ├── workbuddy-signin.{service,timer}
-    ├── workbuddy-growth-poll.{service,timer}
-    ├── qoder-claim.{service,timer}
-    └── codearts-claim.{service,timer}
+└── REFERENCE-IMPLEMENTATION.md    同类开源项目源码分析（借鉴取舍）
 ```
+
+---
+
+## 附录 B：Windows 适配层
+
+Windows 不用 systemd，四个计划任务由 `local/install-tasks.ps1` 注册，
+与 `local/systemd/*.timer` 一一对应：
+
+| 任务名 | 对应 timer | 触发时刻 | 抖动 |
+| --- | --- | --- | --- |
+| `WorkBuddyAutoSignin` | `workbuddy-signin` | 09:00 | `PT1H` |
+| `WorkBuddyGrowthPoll` | `workbuddy-growth-poll` | 01/05/09/13/17/21 | `PT2M` |
+| `QoderDailyCredits` | `qoder-claim` | 10:05 / 12:30 / 14:30 / 16:30 | `PT1H` |
+| `CodeArtsDailyClaim` | `codearts-claim` | 09:00 / 11:30 / 14:00 / 16:30 | `PT1H` |
+
+```powershell
+# 解释器缺省自动探测 .venv\Scripts\pythonw.exe，也可显式指定
+powershell -ExecutionPolicy Bypass -File .\local\install-tasks.ps1
+
+# 体检：四个任务状态 + 三平台 doctor
+powershell -ExecutionPolicy Bypass -File .\local\status.ps1
+```
+
+与 Linux 版的差异，三条务必留意：
+
+1. **任务运行身份是 Interactive**，要求用户已登录。DPAPI 解密钥依赖当前用户
+   配置文件，所以计划任务不能以 SYSTEM 或「不管用户是否登录」方式运行。
+   每个任务额外挂 `AtLogOn` 触发器（延迟 2 分钟），补上 Linux `linger` 的位置。
+2. **CodeArts 会话在 IDE 运行时只读不写**。VSCode 会把内存中的旧会话刷回
+   `state.vscdb`，覆盖外部写入。但 `refresh_token` 是轮换的，续期后必须回写，
+   两步保护（运行检测 + 写前备份/写后自校验）都不要省。
+3. **`local/*.ps1` 必须存成 UTF-8 with BOM**。PowerShell 5.1 在无 BOM 时按 GBK
+   解析中文注释，会报「字符串缺少终止符」并把错误定位到文件末尾。
