@@ -17,8 +17,12 @@
 | WorkBuddy 定时任务 | ✅ 已启用 | 签到 00:05、成长轮询 01/05/09/13/17/21 点 |
 | Qoder 取 token | ✅ 已完成 | keyring 口令 + AES 解密 + 设备头全通，systemd 实测退出码 0 |
 | Qoder 定时任务 | ✅ 已启用 | 10/11/15/19/23 点 05 分，实测 `Result=success` |
-| 看板接入 | ✅ 已完成 | `GET /api/claims` 返回 2 账号 / 3 任务，两张卡片均绿 |
+| CodeArts 签到 | ✅ 已完成 | IDE-native AK/SK 签名路线，`doctor` → `AUTH_READY`，systemd 实测退出码 0 |
+| CodeArts 定时任务 | ✅ 已启用 | 00/10/15/20 点 20 分，实跑返回 `ALREADY` |
+| 看板接入 | ✅ 已完成 | `GET /api/claims` 返回 3 账号 / 4 任务，三张卡片均绿 |
 | 参考实现调研 | ✅ 已完成 | `local/REFERENCE-IMPLEMENTATION.md`；并更正了 CodeArts 的技术路线（第九节） |
+
+> 定时单元共 **4 组**（原 3 组 + `codearts-claim`），凭据全程不落盘、不打印、不进仓库。
 
 **Qoder 卡点的最终结论（2026-11-03 15:57 定稿）**：
 先前两次判断（"从未登录" → "客户端登出导致文件被删"）都只是表象。真正的原因有两个，
@@ -37,10 +41,17 @@
 
 ---
 
-## 二、适配层（`local/`，5 个文件）
+## 二、适配层（`local/`）
 
-位于 `<CLONE_DIR>/local/`，已写入 `.git/info/exclude`，
-`git status` 干净。
+位于 `<CLONE_DIR>/local/`。最初用 `.git/info/exclude` 整目录排除，
+后来为了把适配层提交进自己的 fork，改成只排除运行产物：
+
+```
+local/logs/
+local/__pycache__/
+```
+
+CodeArts 接入后核心脚本为 8 个（见附录 A 的文件清单），定时单元 4 组。
 
 ### 仓库 remote 约定
 
@@ -55,7 +66,7 @@
 
 ```
 git fetch upstream
-git merge upstream/main        # local/ 已被 exclude，不会冲突
+git merge upstream/main        # 上游不含 local/，不会冲突
 ```
 
 推自己的改动：
@@ -465,12 +476,86 @@ POST https://devcloud.cn-north-4.huaweicloud.com/chat/PromptCenterService/v1/ops
 `Already` 认 `40001/40002` 或文案含「已领」；响应 `Set-Cookie` 要吸收续期；
 还要校验 CDP 端口归属，防止拿 A 的会话替 B 签到。
 
-因此「若要继续」不是上面那两条，而是：**CDP 打开码道网页端登录一次抓 Cookie →
-纯 HTTP 查活动 → 带幂等键领取**，不需要 `X-Auth-Token`、不需要 AK/SK 签名、
-不需要 DPoP/STS。已写好的 `codearts_token.py` 在这条路上用不上（但无错，保留备用）。
+因此参考仓库面板的路线是：**CDP 打开码道网页端登录一次抓 Cookie →
+纯 HTTP 查活动 → 带幂等键领取**。但这条路线**不是本机的必需路线**，
+见下面 2026-11-04 的再更正。
 
-> 仍未实现、未部署、未进看板：抓 Cookie 需要一次真实浏览器登录，属于要动凭据的动作，
-> 本轮按只读调研处理，没有擅自执行。完整分析见下一节。
+> 签到仍未实现、未部署、未进看板。完整分析见下一节。
+
+### 结论再更正（2026-11-04，读 IDE 插件源码后）
+
+上面 17:50 的更正只适用于**参考仓库那个面板**，不能据此推出「本机必须
+浏览器登录抓 Cookie」。直接读本机 IDE 插件
+`huaweicloud.codearts-snap/out/extension.js` 后确认：客户端自带签到实现，
+**不需要 Cookie / cftk**。
+
+- `Pz()` 造请求头：`x-snap-traceid`（`It()` = uuid 去横线）、
+  `Agent-Type: PromptCenter`、`Content-Type`、`X-Language`，
+  `x-auth-token: await Pr()`。
+- `Pr()` 商用版打日志 `Hc version, token is transferred by the toolkit.` 后
+  **返回空串**；内部版才用 `cloudDragonToken`。也就是说 JS 层不提供 token。
+- 真正鉴权在 `Mt.sendRequest` → `getGlobalCredentialClient().withCredentials()`
+  → 华为云 SDK 的 **AK/SK 签名**（`SDK-HMAC-SHA256` + `X-Security-Token`）。
+- 端点（商用版）：`GET  https://snap-access.cn-north-4.myhuaweicloud.com/v1/ops/delivery?channel=IDE`
+  与 `POST .../v1/ops/claim`，body `{"campaignId":N,"idempotentKey":<uuid去横线>,"channel":"IDE"}`。
+- 凭据就是 `HuaweiCloudSession` 里的 `accessKey` / `secretKey` / `securitytoken`
+  —— 即 `codearts_token.py` 一直在解的那份会话。
+
+**之前没打通是两个实现 bug，不是「拿不到凭据」**：
+1. `codearts_token.py` 把签名用的 canonical URI（末尾补 `/`、且带 `/snap-manager`
+   前缀）当成真实 URL 发出去，真实路径 `/v1/ops/delivery/` 不存在 → 404；
+2. 误判网关要 `X-Auth-Token`，没看出商用版鉴权在 SDK credential client 里。
+
+**本机实测（2026-11-04，全程只读，未打印任何凭据值）**：
+- 修正 URL 后带签名打 `GET /v1/ops/delivery?channel=IDE`
+  → `HTTP 400 APIG.0602 "Bad request: the security token has expired"`
+  —— 路径命中、签名被网关接受，只差会话有效；
+- 不带签名 → `401`；旧 `/snap-manager/...` 路径 → `404`（对照）；
+- 会话 `expires_at=2026-11-03T10:06:31Z` 已过期。续期时华为云 STS 返回
+  `HTTP 504 APIGW.0201 "Service STS timed out (30000 ms)"`，属服务端超时，
+  重试仍失败。`save_session` 未执行，`state.vscdb` 未被改动。
+
+**结论**：能从 IDE 拿到，网页 Cookie 那条路不必走。2026-11-04 在 IDE 里
+重新登录一次后会话恢复，随即完成实现与部署，见下方「最终落地」。
+
+### 最终落地（2026-11-04 10:33）
+
+新增文件（均纳入版本控制）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `local/codearts_signin.py` | 查活动 + 领取主脚本；`SDK-HMAC-SHA256` 签名 + `X-Security-Token`，`claimable=false` 不调领取，同日用 `idempotentKey` 保证幂等 |
+| `local/run-codearts.sh` | 入口，支持 `doctor / status / auto` |
+| `local/systemd/codearts-claim.{service,timer}` | oneshot + `Persistent=true`，`OnCalendar=*-*-* 00,10,15,20:20:00` |
+
+- 会话过期时脚本自动 `refresh_session()` + `save_session()` 一次并重试；
+  `APIG.0602` / `APIGW.0301` 触发续期，续期失败仍可能需要人在 IDE 重新登录。
+- 已领状态 `CLAIMED / CONFIRMED / CONSUMED` 与错误码 `40001 / 40002`
+  一律映射为 `ALREADY`，不会重复发放。
+- 凭据仍不落盘、不打印、不进仓库：AK/SK 只在 Python 进程内存里用于签名，
+  不经环境变量传递（与 Qoder 的 token 注入方式不同）。
+
+systemd 用户实例实跑验收：
+
+```
+Result=success
+ExecMainExitTimestamp=Wed 2026-11-04 10:33:36 CST
+ExecMainStatus=0
+{"result": "ALREADY", "report": "今日已领 100 积分", "credit": 100, "campaignId": 34}
+```
+
+timer 状态 `active / enabled`，下次触发 15:21。看板 `/api/claims` 验证：
+
+```
+accounts: 3   jobs: 4
+WorkBuddy  CLAIMED  checkedIn=True credit=100 ok=True
+Qoder      CLAIMED  checkedIn=True credit=100 ok=True
+CodeArts   ALREADY  checkedIn=True credit=100 ok=True
+```
+
+> 历史说明：本节上方 17:50 的「结论更正」描述的是参考仓库面板的网页
+> Cookie 路线，只适用于那个面板；本机走的是 IDE-native 路线，两者不要混用。
+> 上面的「签到仍未实现、未部署、未进看板」是当时的状态，已被本小节取代。
 
 ---
 

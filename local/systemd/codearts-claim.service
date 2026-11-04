@@ -1,0 +1,14 @@
+[Unit]
+Description=CodeArts Agent 每日签到 100 积分
+Documentation=https://github.com/88lin/workbuddy-auto-signin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/antblack/code/workbuddy-auto-signin
+ExecStart=/home/antblack/code/workbuddy-auto-signin/local/run-codearts.sh auto
+# 会话过期时可能要等 STS 续期，留足预算
+TimeoutStartSec=300
+Nice=10
+Environment=HOME=/home/antblack

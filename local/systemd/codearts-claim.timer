@@ -1,0 +1,12 @@
+[Unit]
+Description=CodeArts Agent 每日签到（00:20 / 10:20 / 15:20 / 20:20）
+
+[Timer]
+# 活动按北京时间 00:00 重置，多次触发为幂等补领
+OnCalendar=*-*-* 00,10,15,20:20:00
+Persistent=true
+RandomizedDelaySec=120
+Unit=codearts-claim.service
+
+[Install]
+WantedBy=timers.target
