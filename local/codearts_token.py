@@ -1,32 +1,27 @@
 #!/usr/bin/env python3
-"""CodeArts Agent（码道）每日签到 —— 调研与半成品。
+"""CodeArts Agent（码道）会话解密与续期。
 
-结论先说：**这条路没打通，不要部署成定时任务。**
+职责边界：本文件**只负责凭据**，不发起任何业务请求。签到逻辑在
+`codearts_signin.py`，它 import 本模块拿 session。
 
-已确认可用：
+能力：
   1. 从 state.vscdb 解出华为云会话（AK/SK/securitytoken/refresh_token）✅
-  2. 用 DPoP + refresh_token 续期会话 ✅（能拿到新凭据）
-  3. SDK-HMAC-SHA256 签名算法与华为 APIG 兼容 ✅（可通过签名校验）
+  2. 用 DPoP + refresh_token 续期会话并写回客户端存储 ✅
 
-卡住的地方：
-  业务 API（积分余额 / 领取福利）在 snap-access 网关上是 **IAM 用户身份**
-  （请求头 X-Auth-Token），不是 AK/SK 签名身份。实测：
-    - 不带签名 → 401 "x-auth-token not found"（网关在等 token）
-    - 带 AK/SK 签名 → 404 APIG.0101（走的是另一套未发布路由）
-  而 AK/SK 换 IAM token（POST /v3/auth/tokens，methods=hw_ak_sk）华为云不支持，
-  返回 400。
+关于业务接口的路线（2026-11-04 读 IDE 插件源码后定稿，勿再按旧结论改）：
+  业务 API 走 `snap-access` 网关，鉴权是 **SDK-HMAC-SHA256 的 AK/SK 签名 +
+  X-Security-Token**，不是 `X-Auth-Token`。插件里 `Pr()` 在商用版打日志
+  "Hc version, token is transferred by the toolkit." 后**返回空串**，
+  JS 层不提供 token；真正签名在 `Mt.sendRequest` 的 credential client 里。
+  所以不需要账号密码，也不需要浏览器 Cookie。
 
-  另外 refresh 出来的临时 AK/SK 权限极窄：连 sts 的 /v5/caller-identity
-  都返回 404（APIGW.0101），说明它只够换 token，不覆盖业务面。
+  旧版本此处曾断言「必须 IAM X-Auth-Token、这条路没打通」，那是误判，
+  原因有两个实现 bug：把签名用的 canonical URI 当真实 URL（多末尾 "/" 和
+  /snap-manager 前缀 → 404），以及漏了 `Agent-Type: PromptCenter`。
+  详见 docs/codearts-signin.md。
 
-若要继续，需要：
-  - 用账号密码走 HUAWEI_ID 登录换 X-Auth-Token（命令行可做，但等同明文存密码）
-  - 或抓 CodeArts Agent 客户端运行时注入的 httpx 请求，取它实际的 X-Auth-Token
-    来源（扩展里是 `getProductConfigs().developersToken` 或
-    `cloudUser.userInfo.cloudDragonToken`，前者是构建期注入的固定值）
-
-用法（仅诊断）：
-  codearts_token.py session    查看会话有效期与账号
+用法：
+  codearts_token.py session    查看会话有效期与账号（不打印任何凭据值）
   codearts_token.py refresh    续期会话并写回客户端存储
 """
 
@@ -49,9 +44,8 @@ SECRET_KEY = ('secret://{"extensionId":"huaweicloud.authentication",'
 
 # 国内账号的业务网关（来自 huaweicloud.authentication 的 snapEngineApiHost）
 HOST = "snap-access.cn-north-4.myhuaweicloud.com"
-API_PREFIX = "/snap-manager"
-REGION = "cn-north-4"
-SERVICE = "snapengine"
+# 业务请求的 path / 签名 / 请求头都在 codearts_signin.py 里，本文件不发起业务请求。
+# 注意：不要给业务 URL 加 /snap-manager 前缀（旧框架路由，会 404）。
 
 SALT_CANDIDATES = (b"saltysalt", b"saltysalt" + b"\x00" * 16)
 IV = b"\x20" * 16
