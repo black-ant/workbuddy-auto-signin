@@ -1,0 +1,5 @@
+{
+  "_note": "系统 DNS 对 host 返回 NXDOMAIN 但直连可达时，把可用 IPv4 填进 ips。ips 为空数组表示完全走系统 DNS（默认行为），无需改动。填之前请自行确认 IP 归属，不要把 CDN 边缘节点写死太久。",
+  "host": "openapi.qoder.sh",
+  "ips": []
+}

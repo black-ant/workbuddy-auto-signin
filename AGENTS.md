@@ -68,10 +68,19 @@ CodeBuddy / CodeArts / Qoder 等），描述仓库结构、硬性约束与常见
     ├── qoder_runner.py        上游 monkey patch：补 Cosy-* 设备头
     ├── codearts_token.py      CodeArts 会话解密 / 续期 / 写回
     ├── codearts_signin.py     CodeArts 签到主逻辑
+    ├── workbuddy_run.py       Windows 入口：钉住 exe 与凭据路径
+    ├── qoder_run.py           Windows 入口：登录态目录 / 国际版端点 / 出口
+    ├── codearts_run.py        Windows 入口：DPAPI + AES-GCM 解会话 / 续期 / 回写
+    ├── qoder_dns_pin.json     Qoder DNS 兜底 IP（`ips` 为空 = 走系统 DNS）
+    ├── install-tasks.ps1      Windows：注册 4 个计划任务
+    ├── status.ps1             Windows：四任务 + 三平台体检
     ├── DEPLOY-RESULT.md       一次真实部署的实测记录
     ├── REFERENCE-IMPLEMENTATION.md  同类项目源码分析
     └── systemd/               4 组 oneshot + timer
 ```
+
+`local/*.ps1` 必须以 **UTF-8 with BOM** 保存：PowerShell 5.1 无 BOM 时按 GBK
+解析中文注释，会报「字符串缺少终止符」并把错误定位到文件末尾。
 
 ---
 
