@@ -1,11 +1,15 @@
 [Unit]
-Description=CodeArts Agent 每日签到（00:20 / 10:20 / 15:20 / 20:20）
+Description=CodeArts Agent 每日签到（首次 09:00~10:00 随机，白天兜底补领）
 
 [Timer]
-# 活动按北京时间 00:00 重置，多次触发为幂等补领
-OnCalendar=*-*-* 00,10,15,20:20:00
+# 活动按北京时间 00:00 重置，多次触发为幂等补领；触发全部落在工作时间 09:00~18:00 内，
+# 每个触发点都在原点往后 1 小时内随机（首签 09:00~10:00，兜底 11:30~12:30 / 14:00~15:00 / 16:30~17:30）
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 11:30:00
+OnCalendar=*-*-* 14:00:00
+OnCalendar=*-*-* 16:30:00
 Persistent=true
-RandomizedDelaySec=120
+RandomizedDelaySec=1h
 Unit=codearts-claim.service
 
 [Install]

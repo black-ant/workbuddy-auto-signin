@@ -1,12 +1,12 @@
 [Unit]
-Description=WorkBuddy 每日签到 + 成长中心全量（每天 00:05）
+Description=WorkBuddy 每日签到 + 成长中心全量（每天 09:00~10:00 内随机）
 
 [Timer]
-OnCalendar=*-*-* 00:05:00
+# 触发点在工作时间开始（09:00），往后 1 小时内随机，每天时刻各不相同
+OnCalendar=*-*-* 09:00:00
 # 关机错过的触发在开机后补跑
 Persistent=true
-# 加一点随机抖动，避免整点同时打接口
-RandomizedDelaySec=60
+RandomizedDelaySec=1h
 Unit=workbuddy-signin.service
 
 [Install]

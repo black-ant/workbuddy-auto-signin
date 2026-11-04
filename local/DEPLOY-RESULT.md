@@ -14,11 +14,11 @@
 | 部分 | 状态 | 说明 |
 | --- | --- | --- |
 | WorkBuddy 签到 + 成长中心 | ✅ 已完成 | doctor / status / auto 全通，systemd 实测退出码 0 |
-| WorkBuddy 定时任务 | ✅ 已启用 | 签到 00:05、成长轮询 01/05/09/13/17/21 点 |
+| WorkBuddy 定时任务 | ✅ 已启用 | 签到每天 09:00~10:00 内随机、成长轮询 01/05/09/13/17/21 点 |
 | Qoder 取 token | ✅ 已完成 | keyring 口令 + AES 解密 + 设备头全通，systemd 实测退出码 0 |
-| Qoder 定时任务 | ✅ 已启用 | 10/11/15/19/23 点 05 分，实测 `Result=success` |
+| Qoder 定时任务 | ✅ 已启用 | 首领 10:05~11:05 随机 + 白天 3 次兜底，实测 `Result=success` |
 | CodeArts 签到 | ✅ 已完成 | IDE-native AK/SK 签名路线，`doctor` → `AUTH_READY`，systemd 实测退出码 0 |
-| CodeArts 定时任务 | ✅ 已启用 | 00/10/15/20 点 20 分，实跑返回 `ALREADY` |
+| CodeArts 定时任务 | ✅ 已启用 | 首签 09:00~10:00 随机 + 白天 3 次兜底，实跑返回 `ALREADY` |
 | 看板接入 | ✅ 已完成 | `GET /api/claims` 返回 3 账号 / 4 任务，三张卡片均绿 |
 | 参考实现调研 | ✅ 已完成 | `local/REFERENCE-IMPLEMENTATION.md`；并更正了 CodeArts 的技术路线（第九节） |
 
@@ -135,11 +135,17 @@ git push origin main
 
 单元文件在 `local/systemd/`，已复制到 `~/.config/systemd/user/`。
 
+> **2026-11-04 调整**：签到类 3 个 timer 改为「工作时间随机」——触发点全部收进
+> 09:00~18:00，`RandomizedDelaySec` 从 60/120 秒扩大到 1 小时（每个触发点在原点
+> 往后 1 小时内随机、每天时刻各不相同，模拟真人上班签到），凌晨/深夜兜底触发点
+> 全部挪到白天；`workbuddy-growth-poll` 维持原状。修改后需重新同步部署：
+> `cp local/systemd/*.timer ~/.config/systemd/user/ && systemctl --user daemon-reload`。
+
 | 单元 | 频率 | 状态 |
 | --- | --- | --- |
-| `workbuddy-signin.timer` | 每天 00:05 | ✅ enabled，下次 2026-11-04 00:05 |
-| `workbuddy-growth-poll.timer` | 01/05/09/13/17/21 点 | ✅ enabled，下次 2026-11-03 17:01 |
-| `qoder-claim.timer` | 10/11/15/19/23 点 05 分 | ⏸ 已 disable（待登录后启用） |
+| `workbuddy-signin.timer` | 每天 09:00~10:00 内随机 | ✅ enabled |
+| `workbuddy-growth-poll.timer` | 01/05/09/13/17/21 点 | ✅ enabled |
+| `qoder-claim.timer` | 首领 10:05~11:05 随机，兜底 12:30~13:30 / 14:30~15:30 / 16:30~17:30 | ⏸ 已 disable（待登录后启用） |
 
 三者均 `Type=oneshot` + `Persistent=true` + `RandomizedDelaySec`。
 `ExecStart` 直接指向仓库里的 `local/run.sh`、`local/run-qoder.sh`。
@@ -526,7 +532,7 @@ POST https://devcloud.cn-north-4.huaweicloud.com/chat/PromptCenterService/v1/ops
 | --- | --- |
 | `local/codearts_signin.py` | 查活动 + 领取主脚本；`SDK-HMAC-SHA256` 签名 + `X-Security-Token`，`claimable=false` 不调领取，同日用 `idempotentKey` 保证幂等 |
 | `local/run-codearts.sh` | 入口，支持 `doctor / status / auto` |
-| `local/systemd/codearts-claim.{service,timer}` | oneshot + `Persistent=true`，`OnCalendar=*-*-* 00,10,15,20:20:00` |
+| `local/systemd/codearts-claim.{service,timer}` | oneshot + `Persistent=true`，白天 4 个触发点（09:00 / 11:30 / 14:00 / 16:30）各往后 1 小时内随机 |
 
 - 会话过期时脚本自动 `refresh_session()` + `save_session()` 一次并重试；
   `APIG.0602` / `APIGW.0301` 触发续期，续期失败仍可能需要人在 IDE 重新登录。
