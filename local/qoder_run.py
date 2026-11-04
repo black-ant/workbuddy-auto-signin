@@ -29,6 +29,8 @@ import runpy
 import socket
 import sys
 
+from net_win import ensure_direct
+
 LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(LOCAL_DIR)
 UPSTREAM = os.path.join(REPO_DIR, "qoder_signin.py")
@@ -116,6 +118,9 @@ def pin_dns(host, ips):
 
 def setup_egress():
     """返回一句人类可读的出口说明，仅用于 stderr。"""
+    no_proxy = (os.environ.get("NO_PROXY") or "").lower()
+    if "openapi.qoder.sh" in [x.strip() for x in no_proxy.split(",")]:
+        return "直连（系统代理不可用）"
     if proxy_alive():
         proxy = "http://%s:%d" % (PROXY_HOST, PROXY_PORT)
         os.environ["HTTPS_PROXY"] = proxy
@@ -191,6 +196,8 @@ def main(argv=None):
 
     # doctor 是离线检查，不需要连通性，避免探测本身误导排查
     if action != "doctor":
+        if ensure_direct("openapi.qoder.sh"):
+            log("系统代理不可用，本次直连")
         log("出口：%s" % setup_egress())
 
     sys.argv = [UPSTREAM] + args

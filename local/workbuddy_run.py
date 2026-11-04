@@ -20,6 +20,8 @@ import os
 import runpy
 import sys
 
+from net_win import ensure_direct
+
 LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(LOCAL_DIR)
 UPSTREAM = os.path.join(REPO_DIR, "signin.py")
@@ -110,6 +112,9 @@ def main(argv=None):
     if not os.path.isfile(UPSTREAM):
         return _fail("未找到上游脚本：%s" % UPSTREAM, 1)
 
+    if ensure_direct("copilot.tencent.com"):
+        log("系统代理不可用，本次直连")
+
     # 只设默认值，显式传入的环境变量优先——换客户端版本时仍可覆盖
     if not os.environ.get("WORKBUDDY_EXE"):
         exe = default_exe()
@@ -120,8 +125,13 @@ def main(argv=None):
 
     if not os.environ.get("WORKBUDDY_AUTH_FILE"):
         auth = default_auth_file()
-        os.environ["WORKBUDDY_AUTH_FILE"] = auth
-        log("凭据路径：%s（存在=%s）" % (auth, os.path.isfile(auth)))
+        if os.path.isfile(auth):
+            os.environ["WORKBUDDY_AUTH_FILE"] = auth
+            log("凭据路径：%s" % auth)
+        else:
+            # 默认路径不存在时不要钉死，交给上游按 CodeBuddyExtension /
+            # .workbuddy 等候选顺序自动探测（自定义安装目录常见）。
+            log("默认凭据不存在，交给上游自动探测")
 
     sys.argv = [UPSTREAM] + args
     try:

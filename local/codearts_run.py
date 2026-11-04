@@ -39,6 +39,8 @@ import sys
 import tempfile
 import types
 
+from net_win import ensure_direct
+
 LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(LOCAL_DIR, "logs")
 
@@ -467,6 +469,9 @@ def main(argv=None):
         return _emit({"result": "ERROR",
                       "report": "未知子命令：%s（可用：%s）"
                                 % (action, " / ".join(ACTIONS))}, 1)
+
+    if ensure_direct("snap-access.cn-north-4.myhuaweicloud.com"):
+        log("系统代理不可用，本次直连")
 
     try:
         return _run_signin([action])

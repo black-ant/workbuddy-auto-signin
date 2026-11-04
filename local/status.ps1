@@ -192,8 +192,11 @@ if ($python) {
 
         $output = @()
         $exitCode = 0
+        $prevEap = $ErrorActionPreference
         try {
-            # doctor 的诊断信息走 stderr，这里只取 stdout 的 JSON 行
+            # doctor 的诊断信息走 stderr；PS 5.1 在 Stop 模式下会把原生
+            # stderr 当成终止错误，这里临时放宽，只取 stdout 的 JSON 行。
+            $ErrorActionPreference = "Continue"
             $output = & $python $scriptPath $check.Arg 2>$null
             $exitCode = $LASTEXITCODE
         } catch {
@@ -201,6 +204,8 @@ if ($python) {
                 $check.Name, "ERROR", "调用失败：$($_.Exception.Message)")
             $problems++
             continue
+        } finally {
+            $ErrorActionPreference = $prevEap
         }
 
         $line = @($output | Where-Object { $_ -and $_.Trim() }) | Select-Object -Last 1
